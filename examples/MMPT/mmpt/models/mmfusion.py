@@ -40,15 +40,17 @@ class MMPTModel(nn.Module):
         mmtask = Task.config_task(config)
         checkpoint_path = os.path.join(config.eval.save_path, checkpoint)
         mmtask.build_model(checkpoint=checkpoint_path)
-        # TODO(huxu): make the video encoder configurable.
+        
+        
         from ..processors.models.s3dg import S3D
-        video_encoder = S3D('pretrained_models/s3d_dict.npy', 512)
-        video_encoder.load_state_dict(
-            torch.load('pretrained_models/s3d_howto100m.pth'))
+        video_encoder = S3D(config.eval.s3d_dict_path, 512)
+        video_encoder.load_state_dict(torch.load(config.eval.s3d_weight_path))
+        
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
             config.dataset.bert_name, use_fast=config.dataset.use_fast
         )
+        
         from ..processors import Aligner
         aligner = Aligner(config.dataset)
         return (
