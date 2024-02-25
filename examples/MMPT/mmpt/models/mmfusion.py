@@ -32,7 +32,7 @@ class MMPTModel(nn.Module):
     """An e2e wrapper of inference model.
     """
     @classmethod
-    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", device="cuda"):
+    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", device="cuda", max_video_len=1000):
         import os
         from ..utils import recursive_config
         from ..tasks import Task
@@ -55,14 +55,14 @@ class MMPTModel(nn.Module):
         from ..processors import Aligner
         aligner = Aligner(config.dataset)
         return (
-            MMPTModel(config, mmtask.model, video_encoder, device).to(device),
+            MMPTModel(max_video_len, mmtask.model, video_encoder, device).to(device),
             tokenizer,
             aligner
         )
 
-    def __init__(self, config, model, video_encoder, device: str, **kwargs):
+    def __init__(self, max_video_len, model, video_encoder, device: str, **kwargs):
         super().__init__()
-        self.max_video_len = config.dataset.max_video_len
+        self.max_video_len = max_video_len
         self.video_encoder = video_encoder
         self.model = model
         self.device = device
