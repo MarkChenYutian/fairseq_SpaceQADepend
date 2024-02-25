@@ -32,7 +32,7 @@ class MMPTModel(nn.Module):
     """An e2e wrapper of inference model.
     """
     @classmethod
-    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt"):
+    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", device="cuda"):
         import os
         from ..utils import recursive_config
         from ..tasks import Task
@@ -45,6 +45,7 @@ class MMPTModel(nn.Module):
         from ..processors.models.s3dg import S3D
         video_encoder = S3D(config.eval.s3d_dict_path, 512)
         video_encoder.load_state_dict(torch.load(config.eval.s3d_weight_path))
+        video_encoder.to(device)
         
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
@@ -54,16 +55,17 @@ class MMPTModel(nn.Module):
         from ..processors import Aligner
         aligner = Aligner(config.dataset)
         return (
-            MMPTModel(config, mmtask.model, video_encoder),
+            MMPTModel(config, mmtask.model, video_encoder, device).to(device),
             tokenizer,
             aligner
         )
 
-    def __init__(self, config, model, video_encoder, **kwargs):
+    def __init__(self, config, model, video_encoder, device: str, **kwargs):
         super().__init__()
         self.max_video_len = config.dataset.max_video_len
         self.video_encoder = video_encoder
         self.model = model
+        self.device = device
 
     def forward(self, video_frames, caps, cmasks, return_score=False):
         bsz = video_frames.size(0)
@@ -73,15 +75,14 @@ class MMPTModel(nn.Module):
         vfeats = self.video_encoder(video_frames.permute(0, 4, 1, 2, 3))
         vfeats = vfeats['video_embedding']
         vfeats = vfeats.view(bsz, seq_len, vfeats.size(-1))
-        padding = torch.zeros(
-            bsz, self.max_video_len - seq_len, vfeats.size(-1))
-        vfeats = torch.cat([vfeats, padding], dim=1)
+        padding = torch.zeros(bsz, self.max_video_len - seq_len, vfeats.size(-1)).to(self.device)
+        vfeats = torch.cat([vfeats, padding], dim=1).to(self.device)
         vmasks = torch.cat([
             torch.ones((bsz, seq_len), dtype=torch.bool),
             torch.zeros((bsz, self.max_video_len - seq_len), dtype=torch.bool)
             ],
             dim=1
-        )
+        ).to(self.device)
         output = self.model(caps, cmasks, vfeats, vmasks)
         if return_score:
             output = {"score": torch.bmm(
